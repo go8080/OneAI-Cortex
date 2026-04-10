@@ -1,0 +1,6 @@
+# Development override — run infra only, app runs locally with hot reload.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+services:
+  cortex:
+    profiles:
+      - disabled  # Don't start the app container in dev — run locally with uvicorn --reload

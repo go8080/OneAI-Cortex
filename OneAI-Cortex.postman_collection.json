@@ -1,0 +1,815 @@
+{
+	"info": {
+		"name": "OneAI-Cortex API v0.1.0",
+		"description": "Open-source AI agent builder platform. Build, test, evaluate, and deploy agents.\n\n## Authentication\n\nAll endpoints (except health) require one of:\n- `Authorization: Bearer <jwt>` — JWT from OneAI-Auth\n- `Authorization: ApiKey <key>` — Cortex-issued API key\n\nSet the `jwt_token` or `api_key` collection variable, then select the appropriate auth type per request.\n\n## SSE Streaming\n\nChat and resume endpoints return Server-Sent Events. Set `Accept: text/event-stream` header (already configured in collection).",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{jwt_token}}",
+				"type": "string"
+			}
+		]
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		},
+		{
+			"key": "jwt_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "api_key",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "agent_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "session_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "suite_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "run_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "deployment_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "key_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "server_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "tool_id",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Health",
+			"description": "Liveness and readiness probes. No authentication required.",
+			"item": [
+				{
+					"name": "Liveness Check",
+					"request": {
+						"auth": { "type": "noauth" },
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/health",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "health"]
+						},
+						"description": "Returns 200 if the process is running. Use for container liveness probes."
+					}
+				},
+				{
+					"name": "Readiness Check",
+					"request": {
+						"auth": { "type": "noauth" },
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/health/ready",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "health", "ready"]
+						},
+						"description": "Checks database, Redis, and OneAI-Auth connectivity. Use for readiness probes."
+					}
+				}
+			]
+		},
+		{
+			"name": "API Keys",
+			"description": "Manage Cortex-local API keys for programmatic agent access.",
+			"item": [
+				{
+					"name": "Create API Key",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var json = pm.response.json();",
+									"    pm.collectionVariables.set('key_id', json.id);",
+									"    pm.collectionVariables.set('api_key', json.key);",
+									"    console.log('API Key saved (shown once only): ' + json.key);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"my-dev-key\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/api-keys",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "api-keys"]
+						},
+						"description": "Creates a new API key. The raw key is returned ONCE in the response — save it immediately. Auto-saves `key_id` and `api_key` variables."
+					}
+				},
+				{
+					"name": "List API Keys",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/api-keys",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "api-keys"]
+						},
+						"description": "Lists all API keys for the authenticated user. Raw keys are never shown — only prefixes."
+					}
+				},
+				{
+					"name": "Revoke API Key",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/api-keys/{{key_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "api-keys", "{{key_id}}"]
+						},
+						"description": "Revokes (soft-deletes) an API key. Returns 204 No Content."
+					}
+				}
+			]
+		},
+		{
+			"name": "Agents",
+			"description": "Agent CRUD with immutable versioning. Every config change creates a new version.",
+			"item": [
+				{
+					"name": "Create Agent",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var json = pm.response.json();",
+									"    pm.collectionVariables.set('agent_id', json.id);",
+									"    console.log('Agent ID saved: ' + json.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"My Research Agent\",\n  \"description\": \"An agent that researches topics using web tools\",\n  \"framework\": \"deepagents\",\n  \"config\": {\n    \"model\": {\n      \"provider\": \"openai\",\n      \"model_id\": \"gpt-4o\",\n      \"display_name\": \"GPT-4o\",\n      \"requires_api_key\": \"OPENAI_API_KEY\"\n    },\n    \"system_prompt\": \"You are a helpful research assistant.\",\n    \"middleware\": {\n      \"enable_summarization\": true,\n      \"enable_human_in_the_loop\": false\n    },\n    \"user_api_keys\": {\n      \"OPENAI_API_KEY\": \"sk-your-key-here\"\n    }\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/agents",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "agents"]
+						},
+						"description": "Creates a new agent with version 1. Config secrets (user_api_keys) are encrypted at rest. Auto-saves `agent_id` variable."
+					}
+				},
+				{
+					"name": "List Agents",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/agents?page=1&limit=50",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "agents"],
+							"query": [
+								{ "key": "page", "value": "1", "description": "Page number (>= 1)" },
+								{ "key": "limit", "value": "50", "description": "Items per page (1-100)" }
+							]
+						},
+						"description": "Paginated list of agents owned by the authenticated user."
+					}
+				},
+				{
+					"name": "Get Agent",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/agents/{{agent_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "agents", "{{agent_id}}"]
+						},
+						"description": "Get a single agent by ID."
+					}
+				},
+				{
+					"name": "Update Agent",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"My Research Agent v2\",\n  \"config\": {\n    \"model\": {\n      \"provider\": \"anthropic\",\n      \"model_id\": \"claude-sonnet-4-6\",\n      \"display_name\": \"Claude Sonnet 4.6\",\n      \"requires_api_key\": \"ANTHROPIC_API_KEY\"\n    },\n    \"system_prompt\": \"You are an expert research assistant with deep analytical skills.\",\n    \"middleware\": {\n      \"enable_summarization\": true,\n      \"enable_human_in_the_loop\": true\n    },\n    \"user_api_keys\": {\n      \"ANTHROPIC_API_KEY\": \"sk-ant-your-key-here\"\n    }\n  },\n  \"change_summary\": \"Switched to Claude Sonnet 4.6, enabled HITL\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/agents/{{agent_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "agents", "{{agent_id}}"]
+						},
+						"description": "Updates an agent. If config changes, a new immutable version is created automatically."
+					}
+				},
+				{
+					"name": "Delete Agent",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/agents/{{agent_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "agents", "{{agent_id}}"]
+						},
+						"description": "Soft-deletes an agent. Returns 204 No Content."
+					}
+				},
+				{
+					"name": "List Agent Versions",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/agents/{{agent_id}}/versions?page=1&limit=50",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "agents", "{{agent_id}}", "versions"],
+							"query": [
+								{ "key": "page", "value": "1" },
+								{ "key": "limit", "value": "50" }
+							]
+						},
+						"description": "List all versions of an agent, paginated."
+					}
+				},
+				{
+					"name": "Get Agent Version",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/agents/{{agent_id}}/versions/1",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "agents", "{{agent_id}}", "versions", "1"]
+						},
+						"description": "Get a specific version of an agent by version number."
+					}
+				}
+			]
+		},
+		{
+			"name": "Runner",
+			"description": "Execute agents via SSE streaming with session persistence and HITL support.",
+			"item": [
+				{
+					"name": "Create Session",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var json = pm.response.json();",
+									"    pm.collectionVariables.set('session_id', json.id);",
+									"    console.log('Session ID saved: ' + json.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"title\": \"Research Session\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/run/sessions",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "run", "sessions"]
+						},
+						"description": "Creates a new chat session for an agent. Auto-saves `session_id` variable."
+					}
+				},
+				{
+					"name": "Chat (SSE Stream)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Accept", "value": "text/event-stream" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"message\": \"What are the latest trends in AI agent frameworks?\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/run/sessions/{{session_id}}/chat",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "run", "sessions", "{{session_id}}", "chat"]
+						},
+						"description": "Send a message and stream the agent's response via SSE.\n\nResponse format (Server-Sent Events):\n```\nevent: token\ndata: {\"type\": \"token\", \"content\": \"Hello\", ...}\n\nevent: tool_call\ndata: {\"type\": \"tool_call\", \"content\": \"...\", ...}\n\nevent: interrupt\ndata: {\"type\": \"interrupt\", \"content\": \"...\", ...}\n\nevent: done\ndata: {\"type\": \"done\", \"content\": \"...\", ...}\n```"
+					}
+				},
+				{
+					"name": "Resume after HITL (SSE Stream)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Accept", "value": "text/event-stream" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"approved\": true,\n  \"modified_args\": null\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/run/sessions/{{session_id}}/resume",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "run", "sessions", "{{session_id}}", "resume"]
+						},
+						"description": "Resume execution after a Human-in-the-Loop interrupt.\n\n- `approved: true` — continue with the proposed action\n- `approved: false` — reject the action\n- `modified_args` — optionally modify the tool call arguments before continuing"
+					}
+				}
+			]
+		},
+		{
+			"name": "Evaluator",
+			"description": "Test suites, test cases, and evaluation runs for automated agent testing.",
+			"item": [
+				{
+					"name": "Create Test Suite",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var json = pm.response.json();",
+									"    pm.collectionVariables.set('suite_id', json.id);",
+									"    console.log('Suite ID saved: ' + json.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Basic QA Suite\",\n  \"description\": \"Tests the agent's ability to answer factual questions\",\n  \"scoring_method\": \"contains\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/agents/{{agent_id}}/test-suites",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "agents", "{{agent_id}}", "test-suites"]
+						},
+						"description": "Create a test suite for an agent.\n\nScoring methods: `exact_match`, `contains`, `llm_judge`"
+					}
+				},
+				{
+					"name": "List Test Suites",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/agents/{{agent_id}}/test-suites",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "agents", "{{agent_id}}", "test-suites"]
+						}
+					}
+				},
+				{
+					"name": "Create Test Case",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Capital of France\",\n  \"input_message\": \"What is the capital of France?\",\n  \"expected_output\": \"Paris\",\n  \"tags\": [\"geography\", \"factual\"]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/agents/{{agent_id}}/test-suites/{{suite_id}}/cases",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "agents", "{{agent_id}}", "test-suites", "{{suite_id}}", "cases"]
+						},
+						"description": "Add a test case to a suite. `expected_output` is compared against the agent's response using the suite's scoring method."
+					}
+				},
+				{
+					"name": "List Test Cases",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/agents/{{agent_id}}/test-suites/{{suite_id}}/cases",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "agents", "{{agent_id}}", "test-suites", "{{suite_id}}", "cases"]
+						}
+					}
+				},
+				{
+					"name": "Run Evaluation",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var json = pm.response.json();",
+									"    pm.collectionVariables.set('run_id', json.id);",
+									"    console.log('Eval Run ID saved: ' + json.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/agents/{{agent_id}}/test-suites/{{suite_id}}/run",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "agents", "{{agent_id}}", "test-suites", "{{suite_id}}", "run"]
+						},
+						"description": "Runs all test cases in the suite against the agent's current version. Returns aggregated metrics (avg score, pass rate, mean latency)."
+					}
+				},
+				{
+					"name": "List Eval Runs",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/agents/{{agent_id}}/eval-runs",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "agents", "{{agent_id}}", "eval-runs"]
+						}
+					}
+				},
+				{
+					"name": "Get Eval Run Results",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/agents/{{agent_id}}/eval-runs/{{run_id}}/results",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "agents", "{{agent_id}}", "eval-runs", "{{run_id}}", "results"]
+						},
+						"description": "Get per-test-case results for an evaluation run. Includes actual output, score, pass/fail, and latency."
+					}
+				}
+			]
+		},
+		{
+			"name": "Deployer",
+			"description": "Deploy and manage agent deployments.",
+			"item": [
+				{
+					"name": "Deploy Agent",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var json = pm.response.json();",
+									"    pm.collectionVariables.set('deployment_id', json.id);",
+									"    console.log('Deployment ID saved: ' + json.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"type\": \"hosted\",\n  \"agent_version\": null\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/agents/{{agent_id}}/deploy",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "agents", "{{agent_id}}", "deploy"]
+						},
+						"description": "Deploy an agent.\n\nTypes: `hosted` (API endpoint), `sdk_download` (downloadable SDK package)\n\n`agent_version: null` uses the agent's current version."
+					}
+				},
+				{
+					"name": "List Deployments",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/agents/{{agent_id}}/deployments",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "agents", "{{agent_id}}", "deployments"]
+						}
+					}
+				},
+				{
+					"name": "Undeploy",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/agents/deployments/{{deployment_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "agents", "deployments", "{{deployment_id}}"]
+						},
+						"description": "Stops a deployment. Returns 204 No Content."
+					}
+				}
+			]
+		},
+		{
+			"name": "Frameworks",
+			"description": "Discover registered framework adapters and their supported models.",
+			"item": [
+				{
+					"name": "List Frameworks",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/frameworks",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "frameworks"]
+						},
+						"description": "Lists all registered framework adapters with version info and supported models."
+					}
+				},
+				{
+					"name": "Get Framework",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/frameworks/deepagents",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "frameworks", "deepagents"]
+						},
+						"description": "Get details for a specific framework adapter by name."
+					}
+				}
+			]
+		},
+		{
+			"name": "Tools",
+			"description": "Tool registry with schema definitions and encrypted auth config.",
+			"item": [
+				{
+					"name": "Create Tool",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var json = pm.response.json();",
+									"    pm.collectionVariables.set('tool_id', json.id);",
+									"    console.log('Tool ID saved: ' + json.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"web_search\",\n  \"description\": \"Search the web for information\",\n  \"framework\": \"deepagents\",\n  \"tool_type\": \"custom\",\n  \"schema\": {\n    \"type\": \"function\",\n    \"function\": {\n      \"name\": \"web_search\",\n      \"description\": \"Search the web\",\n      \"parameters\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"query\": { \"type\": \"string\", \"description\": \"Search query\" }\n        },\n        \"required\": [\"query\"]\n      }\n    }\n  },\n  \"auth_config\": {\n    \"api_key\": \"your-search-api-key\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/tools",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "tools"]
+						},
+						"description": "Register a new tool. The `schema` field defines the tool's interface. `auth_config` values are encrypted at rest."
+					}
+				},
+				{
+					"name": "List Tools",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/tools?framework=deepagents",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "tools"],
+							"query": [
+								{ "key": "framework", "value": "deepagents", "description": "Filter by framework (optional)" }
+							]
+						},
+						"description": "List all tools, optionally filtered by framework."
+					}
+				},
+				{
+					"name": "Get Tool",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/tools/{{tool_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "tools", "{{tool_id}}"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "MCP Servers",
+			"description": "Register, test, and manage MCP (Model Context Protocol) tool servers.",
+			"item": [
+				{
+					"name": "Create MCP Server (stdio)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var json = pm.response.json();",
+									"    pm.collectionVariables.set('server_id', json.id);",
+									"    console.log('MCP Server ID saved: ' + json.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Filesystem Tools\",\n  \"description\": \"MCP server providing filesystem access tools\",\n  \"transport\": \"stdio\",\n  \"command\": \"npx\",\n  \"args\": [\"-y\", \"@modelcontextprotocol/server-filesystem\", \"/tmp/workspace\"],\n  \"env_vars\": {},\n  \"auth_header\": null\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/mcp-servers",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "mcp-servers"]
+						},
+						"description": "Register a stdio-based MCP server. Uses `command` + `args` to launch the server process."
+					}
+				},
+				{
+					"name": "Create MCP Server (SSE)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var json = pm.response.json();",
+									"    pm.collectionVariables.set('server_id', json.id);",
+									"    console.log('MCP Server ID saved: ' + json.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Remote Tools Server\",\n  \"description\": \"Remote MCP server over SSE transport\",\n  \"transport\": \"sse\",\n  \"url\": \"http://localhost:3001/sse\",\n  \"env_vars\": {\n    \"API_KEY\": \"secret-key-here\"\n  },\n  \"auth_header\": \"Bearer my-auth-token\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/mcp-servers",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "mcp-servers"]
+						},
+						"description": "Register an SSE/HTTP-based MCP server. Uses `url` to connect. `env_vars` and `auth_header` are encrypted at rest."
+					}
+				},
+				{
+					"name": "List MCP Servers",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/mcp-servers",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "mcp-servers"]
+						},
+						"description": "List all MCP servers registered by the authenticated user. Secrets are masked in responses."
+					}
+				},
+				{
+					"name": "Get MCP Server",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/mcp-servers/{{server_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "mcp-servers", "{{server_id}}"]
+						}
+					}
+				},
+				{
+					"name": "Test MCP Server",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/mcp-servers/{{server_id}}/test",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "mcp-servers", "{{server_id}}", "test"]
+						},
+						"description": "Tests connectivity to the MCP server. Returns reachability status, discovered tools, latency, and any errors. Updates the server's status in the database."
+					}
+				},
+				{
+					"name": "Delete MCP Server",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/mcp-servers/{{server_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "mcp-servers", "{{server_id}}"]
+						},
+						"description": "Delete an MCP server registration. Returns 204 No Content."
+					}
+				}
+			]
+		}
+	]
+}
