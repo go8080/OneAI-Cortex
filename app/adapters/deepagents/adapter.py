@@ -13,6 +13,7 @@ from app.adapters.deepagents.backends import build_backend
 from app.adapters.deepagents.middleware import build_extra_middleware
 from app.adapters.deepagents.models import resolve_model
 from app.adapters.deepagents.subagents import build_subagent_dicts
+from app.adapters.deepagents.tools import resolve_tools
 from app.adapters.types import (
     AgentConfig,
     AgentEvent,
@@ -101,7 +102,11 @@ class DeepAgentsAdapter:
         return ValidationResult(valid=len(errors) == 0, errors=errors, warnings=warnings)
 
     async def create_runtime(
-        self, config: AgentConfig, user_api_keys: dict[str, str]
+        self,
+        config: AgentConfig,
+        user_api_keys: dict[str, str],
+        *,
+        google_access_token: str | None = None,
     ) -> AgentRuntime:
         """Build a runnable agent from config. Does NOT execute it."""
         from deepagents import create_deep_agent
@@ -120,17 +125,41 @@ class DeepAgentsAdapter:
             )
             extra_middleware = build_extra_middleware(config)
             backend = build_backend(config.backend)
-            subagents = build_subagent_dicts(config.subagents)
+
+            # Resolve tool name strings → BaseTool instances
+            # Google OAuth tools get a fresh access token; regular tools use env vars
+            top_level_tools = resolve_tools(
+                config.tools, google_access_token=google_access_token
+            ) if config.tools else []
+            subagents = build_subagent_dicts(config.subagents, resolve_tools)
+
+            # When using the default in-memory backend, file tools produce
+            # phantom sandbox:/ links the user can't access.  Append a guard
+            # so the agent responds inline instead.
+            system_prompt = config.system_prompt
+            if config.backend.type == "state":
+                guard = (
+                    "\n\nIMPORTANT: You are running in a chat environment without "
+                    "a filesystem sandbox. Do NOT use file tools (write_file, "
+                    "read_file, edit_file, ls, glob, grep) or the execute tool. "
+                    "Do NOT generate download links or sandbox:/ paths. "
+                    "Always respond directly in the conversation with your full "
+                    "answer — never tell the user to download a file."
+                )
+                system_prompt = (system_prompt or "") + guard
 
             # Build create_deep_agent kwargs — the framework handles
             # its own middleware stack; we pass top-level knobs directly.
             kwargs: dict[str, Any] = {
                 "model": model,
-                "system_prompt": config.system_prompt,
+                "system_prompt": system_prompt,
                 "backend": backend,
                 "name": sanitize_agent_name(config.name),
                 "debug": config.debug,
             }
+
+            if top_level_tools:
+                kwargs["tools"] = top_level_tools
 
             if extra_middleware:
                 kwargs["middleware"] = extra_middleware
@@ -199,18 +228,27 @@ class DeepAgentsAdapter:
                         )
 
                 elif kind == "on_tool_start":
+                    tool_run_id = event.get("run_id", "")
                     yield AgentEvent(
                         type=AgentEventType.TOOL_CALL,
                         content=event.get("name", "unknown_tool"),
-                        metadata={"input": data.get("input", {})},
+                        metadata={
+                            "tool_call_id": tool_run_id,
+                            "tool_name": event.get("name", "unknown_tool"),
+                            "tool_args": data.get("input", {}),
+                        },
                     )
 
                 elif kind == "on_tool_end":
+                    tool_run_id = event.get("run_id", "")
                     output = data.get("output", "")
                     yield AgentEvent(
                         type=AgentEventType.TOOL_RESULT,
                         content=str(output),
-                        metadata={"tool": event.get("name", "")},
+                        metadata={
+                            "tool_call_id": tool_run_id,
+                            "tool_name": event.get("name", ""),
+                        },
                     )
 
             yield AgentEvent(type=AgentEventType.DONE, content="")

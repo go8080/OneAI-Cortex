@@ -18,6 +18,7 @@ from app.models.deployment import Deployment  # noqa: F401
 from app.models.evaluation import EvalResult, EvalRun, TestCase, TestSuite  # noqa: F401
 from app.models.mcp_server import AgentMcpServer, McpServer  # noqa: F401
 from app.models.session import Message, Session  # noqa: F401
+from app.models.connected_service import ConnectedService  # noqa: F401
 from app.models.tool import Tool  # noqa: F401
 
 config = context.config

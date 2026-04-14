@@ -7,6 +7,7 @@ from uuid import UUID
 
 import structlog
 
+from app.adapters.deepagents.tool_instantiation import GOOGLE_OAUTH_TOOLS
 from app.adapters.registry import AdapterRegistry
 from app.adapters.types import (
     AgentConfig,
@@ -21,6 +22,7 @@ from app.core.encryption import SecretEncryption
 from app.core.exceptions import EntityNotFoundError
 from app.repositories.agent import AgentRepository
 from app.repositories.session import SessionRepository
+from app.services.connected_service import ConnectedServiceService
 
 __all__ = ["RunnerService"]
 
@@ -36,11 +38,27 @@ class RunnerService:
         agent_repo: AgentRepository,
         adapter_registry: AdapterRegistry,
         encryption: SecretEncryption,
+        connected_service: ConnectedServiceService | None = None,
     ) -> None:
         self._sessions = session_repo
         self._agents = agent_repo
         self._adapters = adapter_registry
         self._encryption = encryption
+        self._connected = connected_service
+
+    async def list_user_sessions(self, user_id: UUID) -> list[object]:
+        """List all sessions for a user across all agents."""
+        return await self._sessions.list_user_sessions(user_id)
+
+    async def get_session_with_messages(
+        self, session_id: UUID, user_id: UUID
+    ) -> tuple[object, list[object]]:
+        """Get a session and its messages. Raises if not found."""
+        session = await self._sessions.get_session(session_id)
+        if session is None:
+            raise EntityNotFoundError("Session", "id", session_id)
+        messages = await self._sessions.get_messages(session_id)
+        return session, messages
 
     async def create_session(self, agent_id: UUID, user_id: UUID, title: str | None = None) -> object:
         """Create a new chat session for an agent."""
@@ -82,9 +100,16 @@ class RunnerService:
         # Build full AgentConfig from stored config
         agent_config = _build_agent_config(config_dict, agent.name, self._encryption)
 
+        # Fetch Google access token if any tools need it
+        google_access_token = await self._resolve_google_token(
+            user_id, agent_config.tools
+        )
+
         # Get adapter and create runtime
         adapter = self._adapters.get(agent.framework)
-        runtime = await adapter.create_runtime(agent_config, user_api_keys)
+        runtime = await adapter.create_runtime(
+            agent_config, user_api_keys, google_access_token=google_access_token
+        )
 
         # Set up checkpointing
         if agent_config.checkpointing_enabled:
@@ -96,6 +121,13 @@ class RunnerService:
             "role": "user",
             "content": message,
         })
+
+        # Auto-generate title from first user message if session has no title
+        if not session.title:
+            title = message.strip()
+            if len(title) > 80:
+                title = title[:77] + "..."
+            await self._sessions.update_title(session_id, title)
 
         # Build message history
         messages = await self._sessions.get_messages(session_id)
@@ -142,13 +174,48 @@ class RunnerService:
 
         # Build full AgentConfig — must match run_session for consistent behavior
         agent_config = _build_agent_config(config_dict, agent.name, self._encryption)
+        google_access_token = await self._resolve_google_token(
+            user_id, agent_config.tools
+        )
         adapter = self._adapters.get(agent.framework)
-        runtime = await adapter.create_runtime(agent_config, user_api_keys)
+        runtime = await adapter.create_runtime(
+            agent_config, user_api_keys, google_access_token=google_access_token
+        )
 
         async for event in adapter.resume_after_interrupt(
             runtime, str(session_id), approved, modified_args
         ):
             yield event
+
+    async def _resolve_google_token(
+        self, user_id: UUID, tool_names: list[str]
+    ) -> str | None:
+        """Fetch a Google access token if any tools require google_oauth auth.
+
+        Returns None if no Google OAuth tools are in the config, or if the
+        user hasn't connected Google via Connected Services.
+        """
+        needs_google = bool(GOOGLE_OAUTH_TOOLS & set(tool_names))
+        if not needs_google:
+            return None
+
+        if self._connected is None:
+            logger.warning(
+                "runner.google_oauth_no_service",
+                message="Google OAuth tools requested but ConnectedServiceService not available",
+            )
+            return None
+
+        try:
+            result = await self._connected.get_google_token(user_id)
+            return result["access_token"]
+        except Exception as exc:
+            logger.warning(
+                "runner.google_token_fetch_failed",
+                user_id=str(user_id),
+                error=str(exc),
+            )
+            return None
 
 
 def _normalize_model(model_raw: str | dict) -> str:

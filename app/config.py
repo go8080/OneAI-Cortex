@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     # === OneAI-Auth (HARD DEPENDENCY) ===
     auth_service_url: str = "http://localhost:8001"
 
+    # === Google OAuth (optional — feature disabled if empty) ===
+    google_client_id: str = ""
+    google_client_secret: str = ""
+
     # === Agent Execution ===
     agent_execution_timeout_seconds: int = 120
 

@@ -8,7 +8,14 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-__all__ = ["ChatRequest", "ResumeRequest", "SessionCreate", "SessionResponse"]
+__all__ = [
+    "ChatRequest",
+    "MessageResponse",
+    "ResumeRequest",
+    "SessionCreate",
+    "SessionDetailResponse",
+    "SessionResponse",
+]
 
 
 class SessionCreate(BaseModel):
@@ -30,6 +37,25 @@ class SessionResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class MessageResponse(BaseModel):
+    """Message in API responses."""
+
+    id: UUID
+    session_id: UUID
+    role: str
+    content: str
+    metadata: dict[str, Any] = Field(default_factory=dict, alias="meta")
+    created_at: datetime
+
+    model_config = {"from_attributes": True, "populate_by_name": True}
+
+
+class SessionDetailResponse(SessionResponse):
+    """Session with messages for single-session GET."""
+
+    messages: list[MessageResponse] = []
 
 
 class ChatRequest(BaseModel):

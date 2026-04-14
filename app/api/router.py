@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 from app.api.agents import router as agents_router
 from app.api.api_keys import router as api_keys_router
+from app.api.connected_services import router as connected_services_router
 from app.api.deployer import router as deployer_router
 from app.api.evaluator import router as evaluator_router
 from app.api.frameworks import router as frameworks_router
@@ -25,3 +26,4 @@ api_router.include_router(deployer_router, prefix="/agents", tags=["deployer"])
 api_router.include_router(frameworks_router, prefix="/frameworks", tags=["frameworks"])
 api_router.include_router(tools_router, prefix="/tools", tags=["tools"])
 api_router.include_router(mcp_servers_router, prefix="/mcp-servers", tags=["mcp-servers"])
+api_router.include_router(connected_services_router, prefix="/connected-services", tags=["connected-services"])

@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -21,6 +21,13 @@ class Agent(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     __tablename__ = "agents"
     __table_args__ = (
         Index("ix_agents_user_id_is_deleted", "user_id", "is_deleted"),
+        Index(
+            "uq_agents_user_name_active",
+            "user_id",
+            "name",
+            unique=True,
+            postgresql_where=text("is_deleted = false"),
+        ),
     )
 
     user_id: Mapped[UUID] = mapped_column(nullable=False)

@@ -7,8 +7,15 @@ from uuid import UUID
 
 from app.adapters.registry import AdapterRegistry
 from app.core.encryption import SecretEncryption
-from app.core.exceptions import AuthorizationError, EntityNotFoundError, ValidationError
+from app.core.exceptions import (
+    AuthorizationError,
+    DuplicateEntityError,
+    EntityNotFoundError,
+    ValidationError,
+)
+from app.models.agent import Agent
 from app.repositories.agent import AgentRepository
+from app.schemas.agent import AgentResponse
 
 __all__ = ["AgentService"]
 
@@ -27,10 +34,14 @@ class AgentService:
         self._encryption = encryption
 
     async def create_agent(self, user_id: UUID, name: str, description: str | None,
-                           framework: str, config: dict[str, Any]) -> object:
+                           framework: str, config: dict[str, Any]) -> AgentResponse:
         """Create an agent with its first version."""
         # Validate framework exists
         self._adapters.get(framework)
+
+        # Enforce unique name per user
+        if await self._repo.name_exists_for_user(user_id, name):
+            raise DuplicateEntityError("Agent", "name", name)
 
         # Encrypt sensitive config fields
         config = self._encrypt_config_secrets(config)
@@ -50,10 +61,15 @@ class AgentService:
             "change_summary": "Initial version",
         })
 
-        return agent
+        return await self._enrich_agent(agent)
 
-    async def get_agent(self, agent_id: UUID, user_id: UUID) -> object:
+    async def get_agent(self, agent_id: UUID, user_id: UUID) -> AgentResponse:
         """Get an agent, verifying ownership."""
+        agent = await self._get_agent_raw(agent_id, user_id)
+        return await self._enrich_agent(agent)
+
+    async def _get_agent_raw(self, agent_id: UUID, user_id: UUID) -> Agent:
+        """Get the raw ORM agent, verifying ownership."""
         agent = await self._repo.get_by_id(agent_id)
         if agent is None:
             raise EntityNotFoundError("Agent", "id", agent_id)
@@ -62,11 +78,12 @@ class AgentService:
         return agent
 
     async def list_agents(self, user_id: UUID, *, page: int = 1, limit: int = 50) -> tuple:
-        """List agents with pagination. Returns (agents, total_count)."""
+        """List agents with pagination. Returns (enriched agents, total_count)."""
         offset = (page - 1) * limit
         agents = await self._repo.list_by_user(user_id, offset=offset, limit=limit)
         total = await self._repo.count_by_user(user_id)
-        return agents, total
+        enriched = [await self._enrich_agent(a) for a in agents]
+        return enriched, total
 
     async def update_agent(
         self,
@@ -78,13 +95,17 @@ class AgentService:
         status: str | None = None,
         config: dict[str, Any] | None = None,
         change_summary: str | None = None,
-    ) -> object:
+    ) -> AgentResponse:
         """Update an agent. If config changes, creates a new version."""
-        agent = await self.get_agent(agent_id, user_id)
+        agent = await self._get_agent_raw(agent_id, user_id)
 
         # Update scalar fields
         update_data: dict[str, Any] = {}
         if name is not None:
+            if name != agent.name and await self._repo.name_exists_for_user(
+                user_id, name, exclude_id=agent_id
+            ):
+                raise DuplicateEntityError("Agent", "name", name)
             update_data["name"] = name
         if description is not None:
             update_data["description"] = description
@@ -108,18 +129,19 @@ class AgentService:
         if update_data:
             await self._repo.update(agent_id, update_data)
 
-        return await self._repo.get_by_id(agent_id)
+        updated = await self._repo.get_by_id(agent_id)
+        return await self._enrich_agent(updated)
 
     async def delete_agent(self, agent_id: UUID, user_id: UUID) -> None:
         """Soft-delete an agent."""
-        await self.get_agent(agent_id, user_id)  # verify ownership
+        await self._get_agent_raw(agent_id, user_id)  # verify ownership
         deleted = await self._repo.soft_delete(agent_id)
         if not deleted:
             raise EntityNotFoundError("Agent", "id", agent_id)
 
     async def get_version(self, agent_id: UUID, user_id: UUID, version: int) -> object:
         """Get a specific agent version."""
-        await self.get_agent(agent_id, user_id)  # verify ownership
+        await self._get_agent_raw(agent_id, user_id)  # verify ownership
         ver = await self._repo.get_version(agent_id, version)
         if ver is None:
             raise EntityNotFoundError("AgentVersion", "version", version)
@@ -127,9 +149,28 @@ class AgentService:
 
     async def list_versions(self, agent_id: UUID, user_id: UUID, *, page: int = 1, limit: int = 50) -> list:
         """List versions for an agent."""
-        await self.get_agent(agent_id, user_id)  # verify ownership
+        await self._get_agent_raw(agent_id, user_id)  # verify ownership
         offset = (page - 1) * limit
         return await self._repo.list_versions(agent_id, offset=offset, limit=limit)
+
+    async def _enrich_agent(self, agent: Agent) -> AgentResponse:
+        """Build an AgentResponse with model/tools/api_key info from latest version."""
+        version = await self._repo.get_latest_version(agent.id)
+        model: str | None = None
+        tools_count = 0
+        api_key_configured = False
+
+        if version and version.config:
+            cfg = version.config
+            model = cfg.get("model")
+            tools_count = len(cfg.get("tools") or [])
+            api_key_configured = bool(cfg.get("user_api_keys"))
+
+        base = AgentResponse.model_validate(agent, from_attributes=True)
+        base.model = model
+        base.tools_count = tools_count
+        base.api_key_configured = api_key_configured
+        return base
 
     def _encrypt_config_secrets(self, config: dict[str, Any]) -> dict[str, Any]:
         """Encrypt sensitive fields in agent config."""

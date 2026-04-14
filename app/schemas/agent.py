@@ -60,6 +60,9 @@ class AgentResponse(BaseModel):
     current_version: int
     created_at: datetime
     updated_at: datetime
+    model: str | None = None
+    tools_count: int = 0
+    api_key_configured: bool = False
 
     model_config = {"from_attributes": True}
 

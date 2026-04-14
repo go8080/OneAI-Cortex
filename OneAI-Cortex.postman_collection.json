@@ -1,7 +1,7 @@
 {
 	"info": {
-		"name": "OneAI-Cortex API v0.1.0",
-		"description": "Open-source AI agent builder platform. Build, test, evaluate, and deploy agents.\n\n## Authentication\n\nAll endpoints (except health) require one of:\n- `Authorization: Bearer <jwt>` — JWT from OneAI-Auth\n- `Authorization: ApiKey <key>` — Cortex-issued API key\n\nSet the `jwt_token` or `api_key` collection variable, then select the appropriate auth type per request.\n\n## SSE Streaming\n\nChat and resume endpoints return Server-Sent Events. Set `Accept: text/event-stream` header (already configured in collection).",
+		"name": "OneAI-Cortex API v0.4.0",
+		"description": "Open-source AI agent builder platform. Build, test, evaluate, and deploy agents.\n\n## Authentication\n\nAll endpoints (except health) require one of:\n- `Authorization: Bearer <jwt>` — JWT from OneAI-Auth\n- `Authorization: ApiKey <key>` — Cortex-issued API key\n\nSet the `jwt_token` or `api_key` collection variable, then select the appropriate auth type per request.\n\n## SSE Streaming\n\nChat and resume endpoints return Server-Sent Events. Set `Accept: text/event-stream` header (already configured in collection).\n\n## Tool Catalog & Playground (v0.2.0)\n\n61 pre-built LangChain tools across 20 categories are seeded at startup. Browse by category, filter tools, and test any tool in the playground with your own API keys before attaching it to an agent.",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"auth": {
@@ -620,8 +620,38 @@
 		},
 		{
 			"name": "Tools",
-			"description": "Tool registry with schema definitions and encrypted auth config.",
+			"description": "Tool registry with categorized catalog, schema definitions, encrypted auth config, and playground testing.\n\n## Pre-Built Catalog (v0.2.0)\n61 LangChain tools across 20 categories are seeded at startup. Browse categories, filter by category/framework, and test tools in the playground before using them in agents.",
 			"item": [
+				{
+					"name": "List Categories",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/tools/categories",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "tools", "categories"]
+						},
+						"description": "List all tool categories with their tool counts.\n\nReturns 20 categories: search, research, browser, communication, devtools, files, database, data_analysis, speech_audio, image_vision, documents, moderation, weather_location, finance, travel, media, science, automation, blockchain, utility.\n\nEach category includes a `display_name` (human-readable) and `tool_count`."
+					}
+				},
+				{
+					"name": "List Tools",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/tools?category=search",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "tools"],
+							"query": [
+								{ "key": "category", "value": "search", "description": "Filter by category (optional)" },
+								{ "key": "framework", "value": "", "description": "Filter by framework (optional)", "disabled": true }
+							]
+						},
+						"description": "List all active tools, optionally filtered by category and/or framework.\n\nPre-built tools have `tool_type: \"builtin\"` and include `required_keys` (API keys needed for playground) and `input_schema` (expected input format)."
+					}
+				},
 				{
 					"name": "Create Tool",
 					"event": [
@@ -646,30 +676,14 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"name\": \"web_search\",\n  \"description\": \"Search the web for information\",\n  \"framework\": \"deepagents\",\n  \"tool_type\": \"custom\",\n  \"schema\": {\n    \"type\": \"function\",\n    \"function\": {\n      \"name\": \"web_search\",\n      \"description\": \"Search the web\",\n      \"parameters\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"query\": { \"type\": \"string\", \"description\": \"Search query\" }\n        },\n        \"required\": [\"query\"]\n      }\n    }\n  },\n  \"auth_config\": {\n    \"api_key\": \"your-search-api-key\"\n  }\n}"
+							"raw": "{\n  \"name\": \"web_search\",\n  \"description\": \"Search the web for information\",\n  \"framework\": \"deepagents\",\n  \"tool_type\": \"custom\",\n  \"category\": \"search\",\n  \"schema\": {\n    \"type\": \"function\",\n    \"function\": {\n      \"name\": \"web_search\",\n      \"description\": \"Search the web\",\n      \"parameters\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"query\": { \"type\": \"string\", \"description\": \"Search query\" }\n        },\n        \"required\": [\"query\"]\n      }\n    }\n  },\n  \"auth_config\": {\n    \"api_key\": \"your-search-api-key\"\n  }\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/api/v1/tools",
 							"host": ["{{base_url}}"],
 							"path": ["api", "v1", "tools"]
 						},
-						"description": "Register a new tool. The `schema` field defines the tool's interface. `auth_config` values are encrypted at rest."
-					}
-				},
-				{
-					"name": "List Tools",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{base_url}}/api/v1/tools?framework=deepagents",
-							"host": ["{{base_url}}"],
-							"path": ["api", "v1", "tools"],
-							"query": [
-								{ "key": "framework", "value": "deepagents", "description": "Filter by framework (optional)" }
-							]
-						},
-						"description": "List all tools, optionally filtered by framework."
+						"description": "Register a new custom tool. The `schema` field defines the tool's interface. `auth_config` values are encrypted at rest. `category` is optional for custom tools."
 					}
 				},
 				{
@@ -681,7 +695,27 @@
 							"raw": "{{base_url}}/api/v1/tools/{{tool_id}}",
 							"host": ["{{base_url}}"],
 							"path": ["api", "v1", "tools", "{{tool_id}}"]
-						}
+						},
+						"description": "Get a tool by ID. Response includes `required_keys`, `input_schema`, and `test_status` for built-in tools."
+					}
+				},
+				{
+					"name": "Test Tool (Playground)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"api_keys\": {\n    \"tavily_api_key\": \"tvly-your-key-here\"\n  },\n  \"input\": {\n    \"query\": \"latest AI agent frameworks 2026\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/tools/{{tool_id}}/test",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "tools", "{{tool_id}}", "test"]
+						},
+						"description": "Tool Playground — execute a built-in tool with your own API keys and input.\n\n**How it works:**\n1. Provide the API keys the tool requires (check `required_keys` from Get Tool)\n2. Provide input query/parameters (check `input_schema` from Get Tool)\n3. The tool executes and returns actual output\n4. Evaluate the output and decide whether to use the tool in your agent\n\n**Response:**\n- Always returns HTTP 200\n- `status: \"success\"` — tool worked, `output` contains the result\n- `status: \"failed\"` — tool errored, `error` contains the error message\n- `latency_ms` — execution time in milliseconds\n\n**Note:** Only works for built-in tools with a `langchain_class`. Custom tools return 422."
 					}
 				}
 			]
@@ -807,6 +841,83 @@
 							"path": ["api", "v1", "mcp-servers", "{{server_id}}"]
 						},
 						"description": "Delete an MCP server registration. Returns 204 No Content."
+					}
+				}
+			]
+		},
+		{
+			"name": "Connected Services",
+			"description": "OAuth connections to external providers (Google, Slack, GitHub). Manage user consent, store encrypted tokens, and issue fresh access tokens for agent runtime.\n\nRequires GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET env vars for Google support.",
+			"item": [
+				{
+					"name": "Connect Google",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"code\": \"4/0AfJohXl...\",\n  \"redirect_uri\": \"\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/connected-services/google/connect",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "connected-services", "google", "connect"]
+						},
+						"description": "Exchange a Google authorization code for tokens. Stores encrypted refresh token and granted scopes. Creates a new connection or updates an existing one."
+					}
+				},
+				{
+					"name": "List Connected Services",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/connected-services",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "connected-services"]
+						},
+						"description": "List all connected services for the authenticated user. Returns provider, email, status, and granted scopes."
+					}
+				},
+				{
+					"name": "Get Google Scopes",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/connected-services/google/scopes",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "connected-services", "google", "scopes"]
+						},
+						"description": "Get Google connection status and granted scopes. Returns connected=true/false, scope list, and associated email."
+					}
+				},
+				{
+					"name": "Get Google Token",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/connected-services/google/token",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "connected-services", "google", "token"]
+						},
+						"description": "Get a fresh Google access token by refreshing the stored refresh token. Used by agent tools at runtime. Returns 410 if the token was revoked by the user at Google."
+					}
+				},
+				{
+					"name": "Disconnect Google",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/connected-services/google",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "connected-services", "google"]
+						},
+						"description": "Disconnect Google — permanently deletes stored refresh token and granted scopes. Returns 204 No Content."
 					}
 				}
 			]

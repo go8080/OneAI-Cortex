@@ -14,6 +14,7 @@ from app.core.exceptions import (
     EncryptionError,
     EntityNotFoundError,
     MCPConnectionError,
+    ServiceError,
     ValidationError,
 )
 
@@ -46,6 +47,9 @@ class TestStatusMap:
     def test_mcp_connection_is_502(self):
         assert STATUS_MAP[MCPConnectionError] == 502
 
+    def test_service_error_is_502(self):
+        assert STATUS_MAP[ServiceError] == 502
+
     def test_all_exceptions_mapped(self):
         """Every concrete AppError subclass should be in the map."""
-        assert len(STATUS_MAP) == 9
+        assert len(STATUS_MAP) == 10

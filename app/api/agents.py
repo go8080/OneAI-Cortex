@@ -37,10 +37,9 @@ async def create_agent(
     service: AgentService = Depends(_get_service),
 ) -> AgentResponse:
     """Create a new agent with its initial configuration."""
-    agent = await service.create_agent(
+    return await service.create_agent(
         user.user_id, body.name, body.description, body.framework, body.config
     )
-    return AgentResponse.model_validate(agent)
 
 
 @router.get("", response_model=PaginatedResponse)
@@ -53,7 +52,7 @@ async def list_agents(
     """List all agents for the authenticated user."""
     agents, total = await service.list_agents(user.user_id, page=page, limit=limit)
     return PaginatedResponse(
-        items=[AgentResponse.model_validate(a) for a in agents],
+        items=agents,
         total=total,
         page=page,
         limit=limit,
@@ -67,8 +66,7 @@ async def get_agent(
     service: AgentService = Depends(_get_service),
 ) -> AgentResponse:
     """Get an agent by ID."""
-    agent = await service.get_agent(agent_id, user.user_id)
-    return AgentResponse.model_validate(agent)
+    return await service.get_agent(agent_id, user.user_id)
 
 
 @router.put("/{agent_id}", response_model=AgentResponse)
@@ -79,7 +77,7 @@ async def update_agent(
     service: AgentService = Depends(_get_service),
 ) -> AgentResponse:
     """Update an agent. Config changes create a new version."""
-    agent = await service.update_agent(
+    return await service.update_agent(
         agent_id,
         user.user_id,
         name=body.name,
@@ -88,7 +86,6 @@ async def update_agent(
         config=body.config,
         change_summary=body.change_summary,
     )
-    return AgentResponse.model_validate(agent)
 
 
 @router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)

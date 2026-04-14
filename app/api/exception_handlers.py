@@ -15,6 +15,7 @@ from app.core.exceptions import (
     EncryptionError,
     EntityNotFoundError,
     MCPConnectionError,
+    ServiceError,
     ValidationError,
 )
 
@@ -28,6 +29,7 @@ STATUS_MAP: dict[type[AppError], int] = {
     AdapterError: 502,
     AgentExecutionError: 500,
     MCPConnectionError: 502,
+    ServiceError: 502,
 }
 
 

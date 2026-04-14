@@ -81,3 +81,10 @@ class MCPConnectionError(AppError):
     def __init__(self, server_name: str, message: str) -> None:
         self.server_name = server_name
         super().__init__(f"MCP server '{server_name}': {message}", "MCP_ERROR")
+
+
+class ServiceError(AppError):
+    """Raised when an external service call fails (Google OAuth, etc.)."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, "SERVICE_ERROR")

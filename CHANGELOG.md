@@ -7,6 +7,100 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — v0.4.0
+
+### Added
+
+#### Google Connected Services — OAuth Token Management
+- `POST /api/v1/connected-services/google/connect` — Exchange Google authorization code for tokens, store encrypted refresh token
+- `GET /api/v1/connected-services` — List all connected services for the authenticated user
+- `GET /api/v1/connected-services/google/scopes` — Get Google connection status and granted scopes
+- `GET /api/v1/connected-services/google/token` — Get fresh Google access token from stored refresh token (for agent runtime)
+- `DELETE /api/v1/connected-services/google` — Disconnect Google, permanently delete stored tokens
+
+#### Provider-Agnostic Data Model
+- `connected_services` table with `(user_id, provider)` unique constraint — supports Google, Slack, GitHub without schema changes
+- `ServiceProvider` and `ConnectionStatus` StrEnum constants
+- Fernet-encrypted `refresh_token` storage (reuses existing `SecretEncryption` infrastructure, ADR-011)
+- Hard delete on disconnect — tokens not retained after user disconnects
+
+#### Infrastructure
+- `GoogleOAuthClient` — async HTTP client for Google's token exchange (`oauth2.googleapis.com/token`) and userinfo endpoints
+- Graceful feature toggle: `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` env vars; feature disabled if absent (returns 502)
+- `ServiceError` exception type for external service failures (mapped to HTTP 502)
+
+#### Google Agent Tools — Gmail, Calendar, Drive
+- `ToolAuthType` enum: `api_key` (default), `google_oauth`, `none` — declares how each tool authenticates
+- `auth_type` column on `tools` table — tools declare their auth mechanism in the catalog
+- Gmail tools (`gmail_search`, `gmail_send_message`, `gmail_get_message`, `gmail_create_draft`) — use LangChain community Gmail tools with OAuth credentials
+- Calendar tools (`google_calendar_list_events`, `google_calendar_create_event`) — custom BaseTool implementations calling Google Calendar API
+- Drive tools (`google_drive_search`, `google_drive_read`) — custom BaseTool implementations calling Google Drive API (supports Docs, Sheets, plain text)
+- `google_tools.py` — Google OAuth tool builders that create API credentials from access tokens
+- Runtime bridge: `RunnerService` detects `google_oauth` tools → fetches token from Connected Services → passes to adapter → tools receive proper credentials (no env var sniffing)
+
+#### Database Changes
+- Alembic migration `c3d4e5f6g7h8`: new `connected_services` table with unique constraint + user_id index
+- Alembic migration `d4e5f6g7h8i9`: `auth_type` column on `tools` table + backfill Gmail tools as `google_oauth`
+
+#### New Dependencies
+- `google-auth` — Google OAuth credential objects
+- `google-api-python-client` — Google API client (Gmail, Calendar, Drive)
+
+### Architecture Decisions
+- ADR-018: Cortex-owned connected services over Auth-delegated (zero cross-service latency, natural domain boundary)
+- ADR-019: Provider-agnostic connected services data model (single table with provider discriminator)
+
+#### Test Suite (+31 tests)
+- Unit tests: ConnectedServiceService (connect, reconnect, scopes, token refresh, revocation, disconnect, validation)
+- Unit tests: GoogleOAuthClient (code exchange, token refresh, userinfo, error handling)
+- Integration tests: all 5 endpoints (connect, list, scopes, token, disconnect) with happy + error paths
+
+---
+
+## [Unreleased] — v0.3.0
+
+### Documented
+- API key lifecycle verified end-to-end for frontend integration (encryption → storage → decryption → env injection → cleanup)
+- Error message patterns cataloged for frontend regex matching (`api_key`, `authentication`, `unauthorized`)
+- Key overwrite semantics documented: `PUT /agents/{id}` replaces entire `user_api_keys` dict (not merge)
+- Fernet token format documented for frontend reference (opaque `gAAAAAB` prefix strings)
+
+---
+
+## [Unreleased] — v0.2.0
+
+### Added
+
+#### Categorized Pre-Built Tool Catalog
+- 20 tool categories: search, research, browser, communication, devtools, files, database, data_analysis, speech_audio, image_vision, documents, moderation, weather_location, finance, travel, media, science, automation, blockchain, utility
+- `ToolCategory` and `ToolTestStatus` StrEnum constants
+- 61 curated LangChain tools seeded at startup via `ToolSeederService` (idempotent — safe to re-run)
+- Seed data mapping with `langchain_class`, `required_keys`, and `input_schema` per tool
+- `GET /api/v1/tools/categories` — Browse categories with tool counts
+- `GET /api/v1/tools?category=search` — Filter tools by category
+- Category + tool_type partial indexes for fast browsing queries
+
+#### Tool Playground
+- `POST /api/v1/tools/{id}/test` — Execute any built-in tool with user-provided API keys and input
+- Direct execution model: provide keys + input → see actual output → decide whether to use
+- Dynamic LangChain tool instantiation via `importlib` with `ainvoke()` (async-safe for all tools)
+- Test results persisted: `test_status`, `test_detail` (JSONB), `last_tested_at`
+- Returns HTTP 200 with `status="success"|"failed"` — endpoint worked, status indicates tool outcome
+
+#### Database Changes
+- Alembic migration `a1b2c3d4e5f6`: 7 new columns on `tools` table (category, langchain_class, required_keys, input_schema, test_status, last_tested_at, test_detail)
+- 2 partial indexes: `ix_tools_category`, `ix_tools_builtin_category`
+
+### Architecture Decisions
+- ADR-016: Tool categorization via enum + model extension (over separate catalog tables)
+- ADR-017: Tool playground direct execution model (over staged validation)
+
+#### Test Suite (208 tests, +19)
+- Unit tests: ToolSeederService (seed, idempotency, field validation), ToolService (category listing, display name formatting, playground execution success/failure, validation errors)
+- Integration tests: category browsing, category filter, playground 404/422 error paths
+
+---
+
 ## [0.1.0] - 2026-04-10
 
 First implementation release. Full backend for the AI agent builder platform with

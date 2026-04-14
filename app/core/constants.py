@@ -8,7 +8,9 @@ __all__ = [
     "AgentEventType",
     "AgentStatus",
     "BackendType",
+    "ConnectionStatus",
     "DeploymentStatus",
+    "ToolAuthType",
     "DeploymentType",
     "EvalRunStatus",
     "FrameworkType",
@@ -16,6 +18,9 @@ __all__ = [
     "MCPTransport",
     "MessageRole",
     "ScoringMethod",
+    "ServiceProvider",
+    "ToolCategory",
+    "ToolTestStatus",
     "ToolType",
 ]
 
@@ -26,6 +31,14 @@ class AgentStatus(StrEnum):
     DRAFT = "draft"
     ACTIVE = "active"
     ARCHIVED = "archived"
+
+
+class ConnectionStatus(StrEnum):
+    """Status of a connected external service."""
+
+    ACTIVE = "active"
+    REVOKED = "revoked"
+    EXPIRED = "expired"
 
 
 class FrameworkType(StrEnum):
@@ -91,6 +104,55 @@ class MessageRole(StrEnum):
     ASSISTANT = "assistant"
     TOOL = "tool"
     SYSTEM = "system"
+
+
+class ServiceProvider(StrEnum):
+    """Supported external service providers for connected services."""
+
+    GOOGLE = "google"
+    SLACK = "slack"
+    GITHUB = "github"
+
+
+class ToolAuthType(StrEnum):
+    """How a tool authenticates — determines token source at runtime."""
+
+    API_KEY = "api_key"
+    GOOGLE_OAUTH = "google_oauth"
+    NONE = "none"
+
+
+class ToolCategory(StrEnum):
+    """Pre-defined tool categories for the built-in catalog."""
+
+    SEARCH = "search"
+    RESEARCH = "research"
+    BROWSER = "browser"
+    COMMUNICATION = "communication"
+    DEVTOOLS = "devtools"
+    FILES = "files"
+    DATABASE = "database"
+    DATA_ANALYSIS = "data_analysis"
+    SPEECH_AUDIO = "speech_audio"
+    IMAGE_VISION = "image_vision"
+    DOCUMENTS = "documents"
+    MODERATION = "moderation"
+    WEATHER_LOCATION = "weather_location"
+    FINANCE = "finance"
+    TRAVEL = "travel"
+    MEDIA = "media"
+    SCIENCE = "science"
+    AUTOMATION = "automation"
+    BLOCKCHAIN = "blockchain"
+    UTILITY = "utility"
+
+
+class ToolTestStatus(StrEnum):
+    """Status of the last tool test execution."""
+
+    UNTESTED = "untested"
+    SUCCESS = "success"
+    FAILED = "failed"
 
 
 class ToolType(StrEnum):

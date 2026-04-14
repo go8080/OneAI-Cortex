@@ -45,6 +45,24 @@ class SessionRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
+    async def list_user_sessions(
+        self, user_id: UUID, *, active_only: bool = True
+    ) -> list[Session]:
+        """List all sessions for a user across all agents."""
+        stmt = select(Session).where(Session.user_id == user_id)
+        if active_only:
+            stmt = stmt.where(Session.is_active.is_(True))
+        stmt = stmt.order_by(Session.updated_at.desc())
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def update_title(self, session_id: UUID, title: str) -> None:
+        """Set the title of a session."""
+        session = await self.get_session(session_id)
+        if session is not None:
+            session.title = title
+            await self._session.flush()
+
     async def add_message(self, data: dict[str, Any]) -> Message:
         """Add a message to a session."""
         instance = Message(**data)

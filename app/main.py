@@ -8,6 +8,7 @@ from typing import AsyncGenerator
 
 import structlog
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.config import get_settings
@@ -18,7 +19,9 @@ from app.api.exception_handlers import register_exception_handlers
 from app.api.router import api_router
 from app.infrastructure.auth_client import AuthClient
 from app.infrastructure.database import close_db, init_db
+from app.infrastructure.google_oauth import GoogleOAuthClient
 from app.infrastructure.logging import setup_logging
+from app.services.tool_seeder import ToolSeederService
 
 logger = structlog.get_logger(__name__)
 
@@ -56,9 +59,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await init_db(app)
     logger.info("startup.database_initialized")
 
-    # 5. Redis initialization (deferred until Redis service module is built)
+    # 5. Seed pre-built tool catalog (idempotent — safe to re-run)
+    seeder = ToolSeederService(app.state.session_factory)
+    seed_result = await seeder.seed()
+    logger.info("startup.tool_catalog_seeded", **seed_result)
 
-    # 6. Register framework adapters
+    # 6. Initialize Google OAuth client (optional — disabled if not configured)
+    if settings.google_client_id and settings.google_client_secret:
+        app.state.google_oauth_client = GoogleOAuthClient(
+            client_id=settings.google_client_id,
+            client_secret=settings.google_client_secret,
+        )
+        logger.info("startup.google_oauth_configured")
+    else:
+        app.state.google_oauth_client = None
+        logger.info("startup.google_oauth_not_configured")
+
+    # 7. Redis initialization (deferred until Redis service module is built)
+
+    # 8. Register framework adapters
     registry = AdapterRegistry()
     registry.register(DeepAgentsAdapter())
     app.state.adapter_registry = registry
@@ -84,6 +103,18 @@ def create_app() -> FastAPI:
         redoc_url="/api/redoc",
         openapi_url="/api/openapi.json",
     )
+    # CORS — allow the UI dev server to call the API
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://localhost:3000",   # OneAI-UI (Vite dev)
+            "http://localhost:4173",   # OneAI-UI (Vite preview)
+        ],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     app.include_router(api_router)
     register_exception_handlers(app)
     setup_logging(log_level="INFO", json_output=False)

@@ -37,3 +37,33 @@ class Tool(UUIDPrimaryKeyMixin, Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+    # --- v0.4.0: Auth type for Connected Services ---
+    auth_type: Mapped[str] = mapped_column(
+        String(30), nullable=False, server_default="api_key"
+    )
+
+    # --- v0.2.0: Categorized tool catalog ---
+    category: Mapped[str | None] = mapped_column(
+        String(30), nullable=True, index=True
+    )
+    langchain_class: Mapped[str | None] = mapped_column(
+        String(200), nullable=True
+    )
+    required_keys: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default="[]"
+    )
+    input_schema: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default="{}"
+    )
+
+    # --- v0.2.0: Tool playground test results ---
+    test_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="untested"
+    )
+    last_tested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    test_detail: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True
+    )

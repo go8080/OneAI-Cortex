@@ -64,6 +64,28 @@ class AgentRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one()
 
+    async def name_exists_for_user(
+        self,
+        user_id: UUID,
+        name: str,
+        *,
+        exclude_id: UUID | None = None,
+    ) -> bool:
+        """Check if an active agent with this name exists for the user."""
+        stmt = (
+            select(func.count())
+            .select_from(Agent)
+            .where(
+                Agent.user_id == user_id,
+                Agent.name == name,
+                Agent.is_deleted.is_(False),
+            )
+        )
+        if exclude_id is not None:
+            stmt = stmt.where(Agent.id != exclude_id)
+        result = await self._session.execute(stmt)
+        return result.scalar_one() > 0
+
     async def update(self, agent_id: UUID, data: dict[str, Any]) -> Agent | None:
         """Update an agent. Returns None if not found."""
         agent = await self.get_by_id(agent_id)
